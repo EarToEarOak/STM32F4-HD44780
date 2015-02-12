@@ -4,7 +4,7 @@ Interrupt driven software for the ST Microelectronics STMF4 Cortex-M4 microcontr
 
 Full details can be found [here](http://eartoearoak.com/software/stm32f4-hd44780-lcd-driver)
 
-Copyright 2013 Al Brown
+Copyright 2013 - 2015 Al Brown
 
 al [at] eartoearoak.com
 

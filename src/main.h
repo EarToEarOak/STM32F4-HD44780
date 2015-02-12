@@ -5,7 +5,7 @@
  *
  * http://eartoearoak.com/software/stm32f4-hd44780
  *
- * Copyright 2013 Al Brown
+ * Copyright 2013 - 2015 Al Brown
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,14 +24,14 @@
 #ifndef MAIN_H_
 #define MAIN_H_
 
-#ifndef STM32F4XX
-#error  "STM32F4XX must be defined"
+#ifndef STM32F407xx
+#error  "STM32F407xx must be defined"
 #endif
 #ifndef HSE_VALUE
 #error  "HSE_VALUE must be defined"
 #endif
-#ifndef USE_STDPERIPH_DRIVER
-#error  "USE_STDPERIPH_DRIVER must be defined"
+#ifndef USE_HAL_DRIVER
+#error  "USE_HAL_DRIVER must be defined"
 #endif
 
 int main(void);

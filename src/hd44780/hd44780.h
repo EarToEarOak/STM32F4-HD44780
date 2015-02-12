@@ -4,7 +4,7 @@
  * @{
  * @brief		An interrupt driven library for HD44780-based LCD displays
  * @author		Al Brown
- * @copyright	Copyright &copy; 2013 Al Brown
+ * @copyright	Copyright &copy; 2013 - 2015 Al Brown
  */
 
 /*
@@ -26,7 +26,7 @@
 #define __HD44780_H
 
 #include <stdbool.h>
-#include "stm32f4xx_conf.h"
+#include "stm32f4xx.h"
 
 #define HD44780_QUEUE_FREQ  5000	/**< Update Frequency */
 #define HD44780_QUEUE_SIZE  500		/**< Queue Size */
@@ -50,14 +50,15 @@ typedef enum {
 void hd44780_clear(void);
 void hd44780_home(void);
 void hd44780_display(const bool enable, const bool cursor, const bool blink);
-void hd44780_position(const u8 row, const u8 col);
-void hd44780_cgram(const u8 pos, const char row[8]);
+void hd44780_position(const uint8_t row, const uint8_t col);
+void hd44780_cgram(const uint8_t pos, const char row[8]);
 void hd44780_put(const char chr);
 void hd44780_print(const char* string);
 void hd44780_printf(const char *fmt, ...);
-void hd44780_init(GPIO_TypeDef* port, const u16 rs, const u16 rw, const u16 e,
-		const u16 db4, const u16 db5, const u16 db6, const u16 db7,
-		const hd44780_lines_t lines, const hd44780_font_t font);
+void hd44780_init(GPIO_TypeDef* port, const uint16_t rs, const uint16_t rw,
+		const uint16_t e, const uint16_t db4, const uint16_t db5,
+		const uint16_t db6, const uint16_t db7, const hd44780_lines_t lines,
+		const hd44780_font_t font);
 
 #endif
 

@@ -5,7 +5,7 @@
  *
  * http://eartoearoak.com/software/stm32f4-hd44780
  *
- * Copyright 2013 Al Brown
+ * Copyright 2013 - 2015 Al Brown
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,9 +22,10 @@
  */
 
 #include <stdbool.h>
+#include <stm32f4xx.h>
+#include <stm32f4_discovery.h>
 
 #include "hd44780.h"
-#include "stm32f4xx_conf.h"
 
 #include "main.h"
 
@@ -34,8 +35,8 @@ int main(void) {
 
 	char udg[] = { 0x00, 0x00, 0x0a, 0x00, 0x11, 0x0e, 0x00, 0x00 };
 
-	hd44780_init(GPIOE, GPIO_Pin_7, GPIO_Pin_8, GPIO_Pin_9, GPIO_Pin_10,
-			GPIO_Pin_11, GPIO_Pin_12, GPIO_Pin_13, HD44780_LINES_2,
+	hd44780_init(GPIOE, GPIO_PIN_7, GPIO_PIN_8, GPIO_PIN_9, GPIO_PIN_10,
+			GPIO_PIN_11, GPIO_PIN_12, GPIO_PIN_13, HD44780_LINES_2,
 			HD44780_FONT_5x8);
 
 	hd44780_cgram(UDG, udg);
@@ -49,16 +50,3 @@ int main(void) {
 
 	return (0);
 }
-
-#ifdef USE_FULL_ASSERT
-
-void assert_failed(u8* file, u32 line) {
-
-	(void) file;
-	(void) line;
-
-	while (1)
-		;
-}
-
-#endif
