@@ -455,7 +455,7 @@ void hd44780_init(GPIO_TypeDef* gpio, const uint16_t rs, const uint16_t rw,
 	HAL_TIM_Base_Init(&TIM_Handle_Lcd);
 	HAL_TIM_Base_Start_IT(&TIM_Handle_Lcd);
 
-	task_add(HD44780_WAIT, true, 1000, 1);
+	task_add(HD44780_WAIT, true, 2000, 1);
 	task_add(HD44780_WRITE, true, 3, 1);
 	task_add(HD44780_WAIT, NONE, 5, NONE);
 	task_add(HD44780_WRITE, true, 3, 1);
