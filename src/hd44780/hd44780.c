@@ -42,6 +42,11 @@
 #define BKL_PIN				GPIO_PIN_15
 #define BKL_AF 				GPIO_AF9_TIM12
 
+#define CON_CHANNEL			DAC_CHANNEL_2
+
+#define CON_GPIO			GPIOA
+#define CON_PIN				GPIO_PIN_5
+
 #define MAX_CONTRAST		3000
 
 #define NONE 0
@@ -87,6 +92,7 @@ typedef struct {
 
 static TIM_HandleTypeDef TIM_Handle_Lcd;
 TIM_HandleTypeDef TIM_Handle_Brigt;
+DAC_HandleTypeDef DAC_Handle_Cont;
 
 static hd44780_conf_t Lcd_Conf;
 static volatile hd44780_task_t Queue[HD44780_QUEUE_SIZE];
@@ -233,6 +239,20 @@ void hd44780_brightness(const uint8_t brightness) {
 
 	bright = (BKL_PERIOD * brightness) / 100;
 	__HAL_TIM_SetCompare(&TIM_Handle_Brigt, BKL_CHANNEL, bright);
+}
+
+/**
+ * Set the contrast
+ *
+ * @param contrast	0-100
+ *
+ */
+void hd44780_contrast(const uint8_t contrast) {
+
+	uint16_t cont;
+
+	cont = ((uint32_t) (100 - contrast) * MAX_CONTRAST) / 100;
+	HAL_DAC_SetValue(&DAC_Handle_Cont, CON_CHANNEL, DAC_ALIGN_12B_R, cont);
 }
 
 /**
@@ -491,6 +511,31 @@ void hd44780_init_brightness(void) {
 	HAL_TIM_PWM_ConfigChannel(&TIM_Handle_Brigt, &TIM_OCInitStructure,
 	BKL_CHANNEL);
 	HAL_TIM_PWM_Start(&TIM_Handle_Brigt, BKL_CHANNEL);
+}
+
+/**
+ * Initialise the contrast control
+ *
+ */
+void hd44780_init_contrast(void) {
+
+	GPIO_InitTypeDef GPIO_InitStructure;
+	DAC_ChannelConfTypeDef DAC_ChannelConf;
+
+	__GPIOA_CLK_ENABLE();
+	GPIO_InitStructure.Pin = CON_PIN;
+	GPIO_InitStructure.Mode = GPIO_MODE_ANALOG;
+	GPIO_InitStructure.Pull = GPIO_NOPULL;
+	HAL_GPIO_Init(CON_GPIO, &GPIO_InitStructure);
+
+	__DAC_CLK_ENABLE();
+	DAC_Handle_Cont.Instance = DAC;
+	HAL_DAC_Init(&DAC_Handle_Cont);
+
+	DAC_ChannelConf.DAC_Trigger = DAC_TRIGGER_NONE;
+	DAC_ChannelConf.DAC_OutputBuffer = DAC_OUTPUTBUFFER_ENABLE;
+	HAL_DAC_ConfigChannel(&DAC_Handle_Cont, &DAC_ChannelConf, CON_CHANNEL);
+	HAL_DAC_Start(&DAC_Handle_Cont, CON_CHANNEL);
 }
 
 void TIM7_IRQHandler(void) {

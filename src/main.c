@@ -37,6 +37,7 @@
  *		PE12	<->		DB6
  *		PE13	<->		DB7
  *	 	PB15	 ->		K
+ *	 	PA5		 ->		VO
  *
  */
 
@@ -60,6 +61,8 @@ int main(void) {
 
 	hd44780_init_brightness();
 	hd44780_brightness(85);
+	hd44780_init_contrast();
+	hd44780_contrast(50);
 
 	hd44780_cgram(UDG, udg);
 	hd44780_position(0, 1);
