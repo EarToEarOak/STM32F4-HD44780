@@ -21,6 +21,25 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/*
+ * Pins:
+ *
+ *		STM32			LCD
+ *
+ * 		5V		 -		5V
+ *		5V		 -		A
+ *		GND		 -		GND
+ *		PE7		 ->		RS
+ *		PE8		 ->		RW
+ *		PE9		 ->		E
+ *		PE10	<->		DB4
+ *		PE11	<->		DB5
+ *		PE12	<->		DB6
+ *		PE13	<->		DB7
+ *	 	PB15	 ->		K
+ *
+ */
+
 #include <stdbool.h>
 #include <stm32f4xx.h>
 #include <stm32f4_discovery.h>
@@ -38,6 +57,9 @@ int main(void) {
 	hd44780_init(GPIOE, GPIO_PIN_7, GPIO_PIN_8, GPIO_PIN_9, GPIO_PIN_10,
 			GPIO_PIN_11, GPIO_PIN_12, GPIO_PIN_13, HD44780_LINES_2,
 			HD44780_FONT_5x8);
+
+	hd44780_init_brightness();
+	hd44780_brightness(85);
 
 	hd44780_cgram(UDG, udg);
 	hd44780_position(0, 1);
