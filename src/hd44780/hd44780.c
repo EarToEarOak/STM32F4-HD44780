@@ -506,7 +506,8 @@ void hd44780_init_brightness(void) {
 	TIM_OCInitStructure.OCIdleState = TIM_OCIDLESTATE_SET;
 	TIM_OCInitStructure.OCNIdleState = TIM_OCNIDLESTATE_RESET;
 	TIM_OCInitStructure.Pulse = 300;
-	TIM_OCInitStructure.OCPolarity = TIM_OCNPOLARITY_HIGH;
+	TIM_OCInitStructure.OCPolarity = TIM_OCPOLARITY_HIGH;
+	TIM_OCInitStructure.OCNPolarity = TIM_OCNPOLARITY_HIGH;
 
 	HAL_TIM_PWM_ConfigChannel(&TIM_Handle_Brigt, &TIM_OCInitStructure,
 	BKL_CHANNEL);
