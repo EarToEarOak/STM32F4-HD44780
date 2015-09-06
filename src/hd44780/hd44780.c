@@ -66,6 +66,8 @@
 #define HD44780_CGRAM		0x0040
 #define HD44780_DGRAM		0x0080
 
+#define SYSTICK_US			(SystemCoreClock / 1000000)
+
 typedef enum {
 	HD44780_WAIT = 1, HD44780_WAIT_NOT_BUSY, HD44780_WRITE
 } hd44780_command_t;
@@ -99,10 +101,28 @@ static volatile hd44780_task_t Queue[HD44780_QUEUE_SIZE];
 static volatile uint16_t Queue_Head = 0;
 static volatile uint16_t Queue_Tail = 0;
 
-static void delay(uint8_t delay) {
+static void init_delay(void) {
 
-	while (delay != 0)
-		delay--;
+	CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+	DWT->CYCCNT = 0;
+	DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
+
+static void delay_us(uint8_t delay) {
+
+	uint32_t ccr_start = DWT->CYCCNT;
+
+	while (1) {
+		uint32_t ccr = DWT->CYCCNT;
+		long elapsed = ccr - ccr_start;
+
+		if (elapsed < 0)
+			elapsed = ccr_start + ccr;
+
+		if ((elapsed / SYSTICK_US) >= delay)
+			break;
+	}
+
 }
 
 static void set_output(const bool output) {
@@ -131,10 +151,10 @@ static void enable(const bool pulse) {
 
 	if (pulse) {
 		HAL_GPIO_TogglePin(Lcd_Conf.gpio, Lcd_Conf.e);
-		delay(150);
+		delay_us(50);
 	}
 	HAL_GPIO_TogglePin(Lcd_Conf.gpio, Lcd_Conf.e);
-	delay(150);
+	delay_us(50);
 }
 
 static void write(const uint8_t data, const bool reg) {
@@ -442,6 +462,8 @@ void hd44780_init(GPIO_TypeDef* gpio, const uint16_t rs, const uint16_t rw,
 		__GPIOE_CLK_ENABLE();
 	else
 		return;
+
+	init_delay();
 
 	__TIM7_CLK_ENABLE();
 	HAL_NVIC_SetPriority(TIM7_IRQn, 1, HD44780_PRIORITY);
