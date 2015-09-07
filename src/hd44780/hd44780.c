@@ -28,6 +28,9 @@
 #include "hd44780.h"
 #include "stm32f4xx.h"
 
+#define BKL_FREQ			125000
+#define CON_FREQ			250000
+
 #define HD44780_TIMER 		TIM7
 #define HD44780_PRIORITY 	6
 
@@ -35,17 +38,21 @@
 #define BKL_CHANNEL			TIM_CHANNEL_2
 
 #define BKL_TIME			1000
-#define BKL_FREQ			125000
 #define BKL_PERIOD			(SystemCoreClock / 2) / BKL_FREQ
 
 #define BKL_GPIO			GPIOB
 #define BKL_PIN				GPIO_PIN_15
 #define BKL_AF 				GPIO_AF9_TIM12
 
-#define CON_CHANNEL			DAC_CHANNEL_2
+#define CON_GPIO_EN			__GPIOB_CLK_ENABLE
+#define CON_GPIO			GPIOB
+#define CON_PIN				GPIO_PIN_9
+#define CON_AF 				GPIO_AF3_TIM11
+#define CON_TIMER 			TIM11
+#define CON_CHANNEL			TIM_CHANNEL_1
+#define CON_CLK_EN			__TIM11_CLK_ENABLE
+#define CON_PERIOD			HAL_RCC_GetHCLKFreq() / CON_FREQ
 
-#define CON_GPIO			GPIOA
-#define CON_PIN				GPIO_PIN_5
 
 #define MAX_CONTRAST		3000
 
@@ -93,8 +100,8 @@ typedef struct {
 } hd44780_conf_t;
 
 static TIM_HandleTypeDef TIM_Handle_Lcd;
-TIM_HandleTypeDef TIM_Handle_Brigt;
-DAC_HandleTypeDef DAC_Handle_Cont;
+static TIM_HandleTypeDef TIM_Handle_Brigt;
+static TIM_HandleTypeDef Handle_Con;
 
 static hd44780_conf_t Lcd_Conf;
 static volatile hd44780_task_t Queue[HD44780_QUEUE_SIZE];
@@ -269,10 +276,12 @@ void hd44780_brightness(const uint8_t brightness) {
  */
 void hd44780_contrast(const uint8_t contrast) {
 
-	uint16_t cont;
+	uint32_t cont;
 
-	cont = ((uint32_t) (100 - contrast) * MAX_CONTRAST) / 100;
-	HAL_DAC_SetValue(&DAC_Handle_Cont, CON_CHANNEL, DAC_ALIGN_12B_R, cont);
+	cont = (uint32_t) (100 - contrast);
+	cont *= BKL_PERIOD * 2;
+	cont /= 100;
+	__HAL_TIM_SetCompare(&Handle_Con, CON_CHANNEL, cont);
 }
 
 /**
@@ -542,23 +551,35 @@ void hd44780_init_brightness(void) {
  */
 void hd44780_init_contrast(void) {
 
-	GPIO_InitTypeDef GPIO_InitStructure;
-	DAC_ChannelConfTypeDef DAC_ChannelConf;
+	GPIO_InitTypeDef gpio;
+	TIM_OC_InitTypeDef oc;
 
-	__GPIOA_CLK_ENABLE();
-	GPIO_InitStructure.Pin = CON_PIN;
-	GPIO_InitStructure.Mode = GPIO_MODE_ANALOG;
-	GPIO_InitStructure.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(CON_GPIO, &GPIO_InitStructure);
+	CON_GPIO_EN();
+	gpio.Pin = CON_PIN;
+	gpio.Mode = GPIO_MODE_AF_OD;
+	gpio.Pull = GPIO_PULLDOWN;
+	gpio.Speed = GPIO_SPEED_MEDIUM;
+	gpio.Alternate = CON_AF;
+	HAL_GPIO_Init(CON_GPIO, &gpio);
 
-	__DAC_CLK_ENABLE();
-	DAC_Handle_Cont.Instance = DAC;
-	HAL_DAC_Init(&DAC_Handle_Cont);
+	CON_CLK_EN();
+	Handle_Con.Instance = CON_TIMER;
+	Handle_Con.Init.Period = CON_PERIOD;
+	Handle_Con.Init.Prescaler = 1 - 1;
+	Handle_Con.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+	Handle_Con.Init.CounterMode = TIM_COUNTERMODE_UP;
+	HAL_TIM_PWM_Init(&Handle_Con);
 
-	DAC_ChannelConf.DAC_Trigger = DAC_TRIGGER_NONE;
-	DAC_ChannelConf.DAC_OutputBuffer = DAC_OUTPUTBUFFER_ENABLE;
-	HAL_DAC_ConfigChannel(&DAC_Handle_Cont, &DAC_ChannelConf, CON_CHANNEL);
-	HAL_DAC_Start(&DAC_Handle_Cont, CON_CHANNEL);
+	oc.OCMode = TIM_OCMODE_PWM1;
+	oc.OCIdleState = TIM_OCIDLESTATE_SET;
+	oc.OCNIdleState = TIM_OCNIDLESTATE_RESET;
+	oc.Pulse = 0;
+	oc.OCPolarity = TIM_OCPOLARITY_HIGH;
+	oc.OCNPolarity = TIM_OCNPOLARITY_HIGH;
+
+	HAL_TIM_PWM_ConfigChannel(&Handle_Con, &oc,
+	CON_CHANNEL);
+	HAL_TIM_PWM_Start(&Handle_Con, CON_CHANNEL);
 }
 
 void TIM7_IRQHandler(void) {
