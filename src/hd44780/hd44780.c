@@ -25,24 +25,27 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#include "hd44780.h"
-#include "stm32f4xx.h"
+#include <stm32f4xx.h>
 
-#define BKL_FREQ			125000
-#define CON_FREQ			250000
+#include "hd44780.h"
+
+#define BKL_FREQ			250000
+#define CON_FREQ			BKL_FREQ
 
 #define HD44780_TIMER 		TIM7
-#define HD44780_PRIORITY 	6
+#define HD44780_CLK_EN		__TIM7_CLK_ENABLE
+#define HD44780_PRIORITY 	1
+#define HD44780_IRQ 		TIM7_IRQn
+#define HD44780_HANDLER		TIM7_IRQHandler
 
-#define BKL_TIMER 			TIM12
-#define BKL_CHANNEL			TIM_CHANNEL_2
-
-#define BKL_TIME			1000
-#define BKL_PERIOD			(SystemCoreClock / 2) / BKL_FREQ
-
+#define BKL_GPIO_EN			__GPIOB_CLK_ENABLE
 #define BKL_GPIO			GPIOB
 #define BKL_PIN				GPIO_PIN_15
 #define BKL_AF 				GPIO_AF9_TIM12
+#define BKL_TIMER 			TIM12
+#define BKL_CHANNEL			TIM_CHANNEL_2
+#define BKL_CLK_EN			__TIM12_CLK_ENABLE
+#define BKL_PERIOD			(HAL_RCC_GetHCLKFreq() /2) / BKL_FREQ
 
 #define CON_GPIO_EN			__GPIOB_CLK_ENABLE
 #define CON_GPIO			GPIOB
@@ -52,7 +55,6 @@
 #define CON_CHANNEL			TIM_CHANNEL_1
 #define CON_CLK_EN			__TIM11_CLK_ENABLE
 #define CON_PERIOD			HAL_RCC_GetHCLKFreq() / CON_FREQ
-
 
 #define MAX_CONTRAST		3000
 
@@ -77,34 +79,36 @@
 
 typedef enum {
 	HD44780_WAIT = 1, HD44780_WAIT_NOT_BUSY, HD44780_WRITE
-} hd44780_command_t;
+} hd44780_command_type;
 
 typedef struct {
-	hd44780_command_t command;
+	hd44780_command_type command;
 	bool reg;
 	uint16_t data;
 	uint8_t nibble;
-} hd44780_task_t;
+} hd44780_task_type;
 
 typedef struct {
-	GPIO_TypeDef* gpio;
-	uint32_t rs;
-	uint32_t rw;
-	uint32_t e;
-	uint32_t db4;
-	uint32_t db5;
-	uint32_t db6;
-	uint32_t db7;
+	GPIO_TypeDef *gpio;
+	uint16_t rs;
+	uint16_t rw;
+	uint16_t e;
+	uint16_t db4;
+	uint16_t db5;
+	uint16_t db6;
+	uint16_t db7;
 	uint8_t lines;
 	uint8_t font;
-} hd44780_conf_t;
+} hd44780_conf_type;
 
-static TIM_HandleTypeDef TIM_Handle_Lcd;
-static TIM_HandleTypeDef TIM_Handle_Brigt;
+void HD44780_HANDLER(void);
+
+static TIM_HandleTypeDef Handle_Lcd;
+static TIM_HandleTypeDef Handle_Brigt;
 static TIM_HandleTypeDef Handle_Con;
 
-static hd44780_conf_t Lcd_Conf;
-static volatile hd44780_task_t Queue[HD44780_QUEUE_SIZE];
+static hd44780_conf_type Lcd_Conf;
+static volatile hd44780_task_type Queue[HD44780_QUEUE_SIZE];
 static volatile uint16_t Queue_Head = 0;
 static volatile uint16_t Queue_Tail = 0;
 
@@ -134,7 +138,7 @@ static void delay_us(uint8_t delay) {
 
 static void set_output(const bool output) {
 
-	GPIO_InitTypeDef GPIO_InitStruct;
+	GPIO_InitTypeDef gpio_init;
 	uint32_t pins;
 	uint8_t dir;
 
@@ -146,12 +150,12 @@ static void set_output(const bool output) {
 		dir = GPIO_MODE_OUTPUT_PP;
 	}
 
-	GPIO_InitStruct.Pin = pins;
-	GPIO_InitStruct.Mode = dir;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_MEDIUM;
+	gpio_init.Pin = pins;
+	gpio_init.Mode = dir;
+	gpio_init.Pull = GPIO_NOPULL;
+	gpio_init.Speed = GPIO_SPEED_MEDIUM;
 
-	HAL_GPIO_Init(Lcd_Conf.gpio, &GPIO_InitStruct);
+	HAL_GPIO_Init(Lcd_Conf.gpio, &gpio_init);
 }
 
 static void enable(const bool pulse) {
@@ -197,7 +201,7 @@ static bool read_busy(void) {
 
 }
 
-static void task_add(const hd44780_command_t command, const bool reg,
+static void task_add(const hd44780_command_type command, const bool reg,
 		const uint16_t data, uint8_t nibbles) {
 
 	if (command == HD44780_WAIT_NOT_BUSY)
@@ -210,7 +214,7 @@ static void task_add(const hd44780_command_t command, const bool reg,
 		Queue[Queue_Tail].reg = reg;
 		Queue[Queue_Tail].data = data;
 		Queue[Queue_Tail].nibble = nibbles;
-		Queue_Tail = (Queue_Tail + 1) % (HD44780_QUEUE_SIZE - 1);
+		Queue_Tail = (uint16_t) (Queue_Tail + 1) % (HD44780_QUEUE_SIZE - 1);
 	} else
 		assert_param(false);
 }
@@ -218,13 +222,13 @@ static void task_add(const hd44780_command_t command, const bool reg,
 static void task_del(void) {
 
 	if (Queue_Head != Queue_Tail) {
-		Queue_Head = (Queue_Head + 1) % (HD44780_QUEUE_SIZE - 1);
+		Queue_Head = (uint16_t) (Queue_Head + 1) % (HD44780_QUEUE_SIZE - 1);
 	}
 }
 
 static void exec(void) {
 
-	volatile hd44780_task_t *task;
+	volatile hd44780_task_type *task;
 
 	if (Queue_Head != Queue_Tail) {
 		task = &Queue[Queue_Head];
@@ -245,7 +249,7 @@ static void exec(void) {
 			break;
 		case HD44780_WRITE:
 			if (task->nibble == 1)
-				write(task->data >> 4, task->reg);
+				write((uint8_t) (task->data >> 4), task->reg);
 			write(task->data & 0xf, task->reg);
 			task_del();
 			exec();
@@ -262,10 +266,12 @@ static void exec(void) {
  */
 void hd44780_brightness(const uint8_t brightness) {
 
-	uint16_t bright;
+	uint32_t bright;
 
-	bright = (BKL_PERIOD * brightness) / 100;
-	__HAL_TIM_SetCompare(&TIM_Handle_Brigt, BKL_CHANNEL, bright);
+	bright = (uint32_t) (100 - brightness);
+	bright *= BKL_PERIOD;
+	bright /= 100;
+	__HAL_TIM_SetCompare(&Handle_Brigt, BKL_CHANNEL, bright);
 }
 
 /**
@@ -339,7 +345,7 @@ void hd44780_position(const uint8_t row, const uint8_t col) {
 	uint16_t command = HD44780_DGRAM;
 	const uint8_t offsets[] = { 0x00, 0x40, 0x14, 0x54 };
 
-	command |= col + offsets[row];
+	command |= (uint16_t) (col + offsets[row]);
 	task_add(HD44780_WRITE, true, command, 2);
 	task_add(HD44780_WAIT_NOT_BUSY, NONE, NONE, NONE);
 }
@@ -357,11 +363,12 @@ void hd44780_cgram(const uint8_t pos, const char udg[8]) {
 
 	assert_param(pos < 8);
 
-	command |= pos * 8;
+	command |= (uint16_t) (pos * 8);
 
 	task_add(HD44780_WRITE, true, command, 2);
+	task_add(HD44780_WAIT, true, 1, 1);
 	for (i = 0; i < 8; i++) {
-		task_add(HD44780_WRITE, false, udg[i], 2);
+		task_add(HD44780_WRITE, false, (uint16_t) udg[i], 2);
 		task_add(HD44780_WAIT_NOT_BUSY, NONE, NONE, NONE);
 	}
 }
@@ -373,7 +380,7 @@ void hd44780_cgram(const uint8_t pos, const char udg[8]) {
  */
 void hd44780_put(const char chr) {
 
-	task_add(HD44780_WRITE, false, chr, 2);
+	task_add(HD44780_WRITE, false, (uint16_t) chr, 2);
 	task_add(HD44780_WAIT_NOT_BUSY, NONE, NONE, NONE);
 }
 
@@ -382,12 +389,12 @@ void hd44780_put(const char chr) {
  *
  * @param string	String to send
  */
-void hd44780_print(const char* string) {
+void hd44780_print(const char *string) {
 
 	uint8_t i = 0;
 
 	while (string[i]) {
-		task_add(HD44780_WRITE, false, string[i], 2);
+		task_add(HD44780_WRITE, false, (uint16_t) string[i], 2);
 		task_add(HD44780_WAIT_NOT_BUSY, NONE, NONE, NONE);
 		i++;
 	}
@@ -401,9 +408,9 @@ void hd44780_print(const char* string) {
  */
 void hd44780_printf(const char *fmt, ...) {
 
-	uint16_t i;
-	uint16_t size;
-	uint8_t character;
+	int i;
+	int size;
+	char character;
 	char buffer[32];
 	va_list args;
 
@@ -418,6 +425,7 @@ void hd44780_printf(const char *fmt, ...) {
 		else
 			hd44780_put(character);
 	}
+	va_end(args);
 }
 
 /**
@@ -434,10 +442,10 @@ void hd44780_printf(const char *fmt, ...) {
  * @param lines	Lines
  * @param font	Font
  */
-void hd44780_init(GPIO_TypeDef* gpio, const uint16_t rs, const uint16_t rw,
+void hd44780_init(GPIO_TypeDef *gpio, const uint16_t rs, const uint16_t rw,
 		const uint16_t e, const uint16_t db4, const uint16_t db5,
-		const uint16_t db6, const uint16_t db7, const hd44780_lines_t lines,
-		const hd44780_font_t font) {
+		const uint16_t db6, const uint16_t db7, const hd44780_lines_type lines,
+		const hd44780_font_type font) {
 
 	assert_param(IS_GPIO_ALL_INSTANCE(gpio));
 	assert_param(IS_GPIO_PIN(rs));
@@ -474,19 +482,19 @@ void hd44780_init(GPIO_TypeDef* gpio, const uint16_t rs, const uint16_t rw,
 
 	init_delay();
 
-	__TIM7_CLK_ENABLE();
-	HAL_NVIC_SetPriority(TIM7_IRQn, 1, HD44780_PRIORITY);
-	HAL_NVIC_EnableIRQ(TIM7_IRQn);
+	HD44780_CLK_EN();
+	HAL_NVIC_SetPriority(HD44780_IRQ, 0, HD44780_PRIORITY);
+	HAL_NVIC_EnableIRQ(HD44780_IRQ);
 
-	TIM_Handle_Lcd.Instance = HD44780_TIMER;
-	TIM_Handle_Lcd.Init.Period = (62500 / HD44780_QUEUE_FREQ) - 1;
-	TIM_Handle_Lcd.Init.Prescaler = ((SystemCoreClock / 2) / 62500) - 1;
-	TIM_Handle_Lcd.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-	TIM_Handle_Lcd.Init.CounterMode = TIM_COUNTERMODE_UP;
-	HAL_TIM_Base_Init(&TIM_Handle_Lcd);
-	HAL_TIM_Base_Start_IT(&TIM_Handle_Lcd);
+	Handle_Lcd.Instance = HD44780_TIMER;
+	Handle_Lcd.Init.Period = (62500 / HD44780_QUEUE_FREQ) - 1;
+	Handle_Lcd.Init.Prescaler = ((HAL_RCC_GetHCLKFreq() / 2) / 62500) - 1;
+	Handle_Lcd.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+	Handle_Lcd.Init.CounterMode = TIM_COUNTERMODE_UP;
+	HAL_TIM_Base_Init(&Handle_Lcd);
+	HAL_TIM_Base_Start_IT(&Handle_Lcd);
 
-	task_add(HD44780_WAIT, true, 2000, 1);
+	task_add(HD44780_WAIT, true, 100, 1);
 	task_add(HD44780_WRITE, true, 3, 1);
 	task_add(HD44780_WAIT, NONE, 5, NONE);
 	task_add(HD44780_WRITE, true, 3, 1);
@@ -513,36 +521,35 @@ void hd44780_init(GPIO_TypeDef* gpio, const uint16_t rs, const uint16_t rw,
  */
 void hd44780_init_brightness(void) {
 
-	GPIO_InitTypeDef GPIO_InitStructure;
-	TIM_OC_InitTypeDef TIM_OCInitStructure;
+	GPIO_InitTypeDef gpio;
+	TIM_OC_InitTypeDef oc;
 
-	__GPIOB_CLK_ENABLE();
-	GPIO_InitStructure.Pin = BKL_PIN;
-	GPIO_InitStructure.Mode = GPIO_MODE_AF_OD;
-	GPIO_InitStructure.Pull = GPIO_NOPULL;
-	GPIO_InitStructure.Speed = GPIO_SPEED_MEDIUM;
-	GPIO_InitStructure.Alternate = BKL_AF;
-	HAL_GPIO_Init(BKL_GPIO, &GPIO_InitStructure);
+	BKL_GPIO_EN();
+	gpio.Pin = BKL_PIN;
+	gpio.Mode = GPIO_MODE_AF_OD;
+	gpio.Pull = GPIO_NOPULL;
+	gpio.Speed = GPIO_SPEED_MEDIUM;
+	gpio.Alternate = BKL_AF;
+	HAL_GPIO_Init(BKL_GPIO, &gpio);
 
-	__TIM12_CLK_ENABLE();
+	BKL_CLK_EN();
+	Handle_Brigt.Instance = BKL_TIMER;
+	Handle_Brigt.Init.Period = BKL_PERIOD;
+	Handle_Brigt.Init.Prescaler = 1 - 1;
+	Handle_Brigt.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+	Handle_Brigt.Init.CounterMode = TIM_COUNTERMODE_UP;
+	HAL_TIM_PWM_Init(&Handle_Brigt);
 
-	TIM_Handle_Brigt.Instance = BKL_TIMER;
-	TIM_Handle_Brigt.Init.Period = (SystemCoreClock / 2) / BKL_FREQ;
-	TIM_Handle_Brigt.Init.Prescaler = 1 - 1;
-	TIM_Handle_Brigt.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-	TIM_Handle_Brigt.Init.CounterMode = TIM_COUNTERMODE_UP;
-	HAL_TIM_PWM_Init(&TIM_Handle_Brigt);
+	oc.OCMode = TIM_OCMODE_PWM1;
+	oc.OCIdleState = TIM_OCIDLESTATE_SET;
+	oc.OCNIdleState = TIM_OCNIDLESTATE_RESET;
+	oc.Pulse = 0;
+	oc.OCPolarity = TIM_OCPOLARITY_HIGH;
+	oc.OCNPolarity = TIM_OCNPOLARITY_HIGH;
 
-	TIM_OCInitStructure.OCMode = TIM_OCMODE_PWM1;
-	TIM_OCInitStructure.OCIdleState = TIM_OCIDLESTATE_SET;
-	TIM_OCInitStructure.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-	TIM_OCInitStructure.Pulse = 300;
-	TIM_OCInitStructure.OCPolarity = TIM_OCPOLARITY_HIGH;
-	TIM_OCInitStructure.OCNPolarity = TIM_OCNPOLARITY_HIGH;
-
-	HAL_TIM_PWM_ConfigChannel(&TIM_Handle_Brigt, &TIM_OCInitStructure,
+	HAL_TIM_PWM_ConfigChannel(&Handle_Brigt, &oc,
 	BKL_CHANNEL);
-	HAL_TIM_PWM_Start(&TIM_Handle_Brigt, BKL_CHANNEL);
+	HAL_TIM_PWM_Start(&Handle_Brigt, BKL_CHANNEL);
 }
 
 /**
@@ -582,8 +589,8 @@ void hd44780_init_contrast(void) {
 	HAL_TIM_PWM_Start(&Handle_Con, CON_CHANNEL);
 }
 
-void TIM7_IRQHandler(void) {
+void HD44780_HANDLER(void) {
 
 	exec();
-	HAL_TIM_IRQHandler(&TIM_Handle_Lcd);
+	HAL_TIM_IRQHandler(&Handle_Lcd);
 }

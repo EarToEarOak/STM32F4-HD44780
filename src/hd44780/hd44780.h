@@ -37,7 +37,7 @@
 typedef enum {
 	HD44780_LINES_1 = 0x00, 		/**< 1 Line */
 	HD44780_LINES_2 = 0x08			/**< 2 or 4 Lines */
-} hd44780_lines_t;
+} hd44780_lines_type;
 
 /**
  * Font
@@ -45,7 +45,7 @@ typedef enum {
 typedef enum {
 	HD44780_FONT_5x8 = 0x00,		/**< Standard Font */
 	HD44780_FONT_5x10 = 0x04 		/**< Large Font */
-} hd44780_font_t;
+} hd44780_font_type;
 
 void hd44780_brightness(const uint8_t brightness);
 void hd44780_contrast(const uint8_t contrast);
@@ -59,8 +59,8 @@ void hd44780_print(const char* string);
 void hd44780_printf(const char *fmt, ...);
 void hd44780_init(GPIO_TypeDef* port, const uint16_t rs, const uint16_t rw,
 		const uint16_t e, const uint16_t db4, const uint16_t db5,
-		const uint16_t db6, const uint16_t db7, const hd44780_lines_t lines,
-		const hd44780_font_t font);
+		const uint16_t db6, const uint16_t db7, const hd44780_lines_type lines,
+		const hd44780_font_type font);
 void hd44780_init_brightness();
 void hd44780_init_contrast();
 
